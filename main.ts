@@ -13,10 +13,38 @@
 // Both grader runs copy the same committed bytes, so the outputs are
 // byte-identical by construction.
 
-import { copyFileSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
-const source = new URL("./entry.png", import.meta.url);
+// Resolve where the committed broadsheet lives and where it must land.
+// The source is the entry.png committed beside this file; if it is not
+// there, the entry is broken, and we say so plainly instead of failing
+// inside the copy with a bare ENOENT.
+function deliveryPaths() {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const sourcePath = join(here, "entry.png");
+  if (!existsSync(sourcePath)) {
+    throw new Error(
+      `entry.png is missing beside main.ts (looked in ${here}); ` +
+        "the committed broadsheet must ship with the entry",
+    );
+  }
+  const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
+  return { sourcePath, targetPath: join(outputDir, "entry.png") };
+}
 
-copyFileSync(source, join(outputDir, "entry.png"));
+const { sourcePath, targetPath } = deliveryPaths();
+
+copyFileSync(sourcePath, targetPath);
+
+// The delivered file must be the committed bytes and nothing else: check
+// the copy's length against the source before reporting success.
+const sourceBytes = statSync(sourcePath).size;
+const deliveredBytes = statSync(targetPath).size;
+if (deliveredBytes !== sourceBytes) {
+  throw new Error(
+    `delivered entry.png is ${deliveredBytes} bytes, source is ${sourceBytes} bytes`,
+  );
+}
+console.log(`delivered entry.png (${deliveredBytes} bytes) to ${targetPath}`);
